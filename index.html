@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>XLS_URL_EXTRACTOR</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Playfair+Display:wght@400;700&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0e0e0e;
+    --surface:   #161616;
+    --border:    #2a2a2a;
+    --accent:    #c8a96e;
+    --accent2:   #8fb3a0;
+    --text:      #e8e2d9;
+    --muted:     #666;
+    --ok:        #6dab8a;
+    --warn:      #d4a04a;
+    --err:       #c06060;
+    --font-mono: 'DM Mono', monospace;
+    --font-serif:'Playfair Display', serif;
+  }
+
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-mono);
+    min-height: 100vh;
+    font-size: 13px;
+  }
+
+  /* ── NOISE OVERLAY ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .wrap {
+    position: relative; z-index: 1;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 48px 24px 80px;
+  }
+
+  /* ── HEADER ── */
+  header {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 28px;
+    margin-bottom: 40px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .brand { display: flex; flex-direction: column; gap: 4px; }
+  .brand-name {
+    font-family: var(--font-serif);
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 0.02em;
+    line-height: 1;
+  }
+  .brand-sub {
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .header-badge {
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    border: 1px solid var(--border);
+    padding: 4px 10px;
+    border-radius: 2px;
+  }
+
+  /* ── UPLOAD ZONE ── */
+  .upload-zone {
+    border: 1px dashed var(--border);
+    border-radius: 4px;
+    padding: 48px 32px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .25s, background .25s;
+    position: relative;
+    overflow: hidden;
+  }
+  .upload-zone:hover, .upload-zone.drag {
+    border-color: var(--accent);
+    background: rgba(200,169,110,.04);
+  }
+  .upload-zone input[type=file] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+  .upload-icon {
+    font-size: 32px;
+    margin-bottom: 14px;
+    display: block;
+    opacity: .5;
+  }
+  .upload-title {
+    font-family: var(--font-serif);
+    font-size: 18px;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+  .upload-hint { color: var(--muted); font-size: 11px; letter-spacing: 0.06em; }
+  .upload-hint span { color: var(--accent); }
+
+  /* ── STATS BAR ── */
+  .stats-bar {
+    display: none;
+    gap: 2px;
+    margin: 24px 0 0;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .stat {
+    flex: 1;
+    padding: 14px 16px;
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .stat:not(:last-child) { border-right: 1px solid var(--border); }
+  .stat-val {
+    font-size: 22px;
+    font-weight: 500;
+    color: var(--accent);
+    line-height: 1;
+  }
+  .stat-label { font-size: 10px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; }
+
+  /* ── CONTROLS ── */
+  .controls {
+    display: none;
+    gap: 10px;
+    margin-top: 24px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .btn {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    padding: 10px 20px;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: all .2s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.primary {
+    background: var(--accent);
+    color: #0e0e0e;
+    border-color: var(--accent);
+    font-weight: 500;
+  }
+  .btn.primary:hover { background: #d9bc85; border-color: #d9bc85; }
+  .btn:disabled { opacity: .35; cursor: not-allowed; pointer-events: none; }
+
+  .filter-wrap {
+    margin-left: auto;
+    position: relative;
+  }
+  .filter-input {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 14px 10px 32px;
+    border-radius: 2px;
+    width: 200px;
+    transition: border-color .2s;
+    outline: none;
+  }
+  .filter-input:focus { border-color: var(--accent); }
+  .filter-icon {
+    position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+    color: var(--muted); font-size: 12px; pointer-events: none;
+  }
+
+  /* ── PROGRESS ── */
+  .progress-section {
+    display: none;
+    margin-top: 24px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    background: var(--surface);
+  }
+  .progress-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .progress-title { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+  .progress-pct { font-size: 18px; font-weight: 500; color: var(--accent); }
+  .progress-bar-wrap {
+    height: 3px;
+    background: var(--border);
+  }
+  .progress-bar {
+    height: 100%;
+    background: var(--accent);
+    width: 0%;
+    transition: width .3s ease;
+  }
+  .progress-log {
+    height: 140px;
+    overflow-y: auto;
+    padding: 12px 16px;
+    font-size: 11px;
+    line-height: 1.7;
+  }
+  .progress-log::-webkit-scrollbar { width: 4px; }
+  .progress-log::-webkit-scrollbar-track { background: transparent; }
+  .progress-log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .log-ok    { color: var(--ok); }
+  .log-skip  { color: var(--muted); }
+  .log-warn  { color: var(--warn); }
+  .log-err   { color: var(--err); }
+
+  /* ── TABLE ── */
+  .table-section {
+    display: none;
+    margin-top: 28px;
+  }
+  .table-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .table-label { font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  .table-count { font-size: 10px; color: var(--muted); }
+
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 4px; }
+  table { width: 100%; border-collapse: collapse; }
+  thead tr { background: var(--surface); }
+  th {
+    text-align: left;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+  }
+  th:hover { color: var(--accent); }
+  th.sorted { color: var(--accent); }
+  td {
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    vertical-align: middle;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,.02); }
+
+  .sku-cell { font-weight: 500; color: var(--text); }
+  .style-cell { color: var(--muted); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .color-cell { color: var(--text); }
+
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    padding: 3px 8px;
+    border-radius: 2px;
+    white-space: nowrap;
+  }
+  .pill-ok    { background: rgba(109,171,138,.12); color: var(--ok); border: 1px solid rgba(109,171,138,.25); }
+  .pill-miss  { background: rgba(212,160,74,.10);  color: var(--warn); border: 1px solid rgba(212,160,74,.25); }
+  .pill-done  { background: rgba(109,171,138,.20); color: var(--ok); border: 1px solid rgba(109,171,138,.4); }
+  .pill-err   { background: rgba(192,96,96,.12); color: var(--err); border: 1px solid rgba(192,96,96,.25); }
+
+  .img-thumb {
+    width: 40px; height: 40px;
+    object-fit: cover;
+    border-radius: 2px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    display: block;
+  }
+  .img-placeholder {
+    width: 40px; height: 40px;
+    border-radius: 2px;
+    border: 1px dashed var(--border);
+    background: var(--surface);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--muted);
+    font-size: 16px;
+  }
+
+  .dl-btn {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 4px 10px;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: all .2s;
+    white-space: nowrap;
+  }
+  .dl-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+  .dl-btn:disabled { opacity: .3; cursor: not-allowed; }
+
+  /* ── EMPTY STATE ── */
+  .empty-state {
+    padding: 40px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  /* ── TOAST ── */
+  .toast {
+    position: fixed; bottom: 28px; right: 28px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    padding: 12px 18px;
+    border-radius: 2px;
+    font-size: 12px;
+    color: var(--text);
+    z-index: 999;
+    transform: translateY(80px);
+    opacity: 0;
+    transition: all .3s cubic-bezier(.34,1.56,.64,1);
+    max-width: 320px;
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+
+  /* ── DOWNLOAD ALL SUMMARY ── */
+  .dl-summary {
+    display: none;
+    margin-top: 16px;
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.8;
+  }
+
+  /* ── TEMPLATE BANNER ── */
+  .template-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 16px 20px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .template-info { display: flex; align-items: center; gap: 14px; }
+  .template-icon { font-size: 24px; opacity: .7; }
+  .template-title { font-size: 12px; font-weight: 500; color: var(--text); margin-bottom: 2px; }
+  .template-desc  { font-size: 10px; color: var(--muted); letter-spacing: 0.04em; }
+
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px) } to { opacity:1; transform:translateY(0) } }
+  .anim { animation: fadeIn .4s ease forwards; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <div class="brand-name">XLS_URL_EXTRACTOR</div>
+      <div class="brand-sub">Image Download Manager</div>
+    </div>
+    <div class="header-badge">Szomer v1.0</div>
+  </header>
+
+  <!-- TEMPLATE BANNER -->
+  <div class="template-banner">
+    <div class="template-info">
+      <span class="template-icon">📄</span>
+      <div>
+        <div class="template-title">Need a template?</div>
+        <div class="template-desc">Download the blank Excel template, fill in your SKUs + image URLs, then upload it here.</div>
+      </div>
+    </div>
+    <button class="btn" id="btnGetTemplate">⬇ Download Template</button>
+  </div>
+
+  <!-- UPLOAD -->
+  <div class="upload-zone" id="dropZone">
+    <input type="file" id="fileInput" accept=".xlsx,.xls">
+    <span class="upload-icon">📋</span>
+    <div class="upload-title">Drop your Excel file here</div>
+    <div class="upload-hint">or click to browse &nbsp;·&nbsp; <span>.xlsx / .xls</span></div>
+  </div>
+
+  <!-- STATS -->
+  <div class="stats-bar anim" id="statsBar">
+    <div class="stat"><div class="stat-val" id="statTotal">0</div><div class="stat-label">Total SKUs</div></div>
+    <div class="stat"><div class="stat-val" id="statReady">0</div><div class="stat-label">Images Ready</div></div>
+    <div class="stat"><div class="stat-val" id="statMissing">0</div><div class="stat-label">Missing URLs</div></div>
+    <div class="stat"><div class="stat-val" id="statDone">0</div><div class="stat-label">Downloaded</div></div>
+  </div>
+
+  <!-- CONTROLS -->
+  <div class="controls" id="controls">
+    <button class="btn primary" id="btnDownloadAll">⬇ Download All</button>
+    <button class="btn" id="btnDownloadReady">⬇ Ready Only</button>
+    <button class="btn" id="btnReset">↺ Reset</button>
+    <div class="filter-wrap">
+      <span class="filter-icon">⌕</span>
+      <input class="filter-input" id="filterInput" placeholder="Filter by SKU or style…">
+    </div>
+  </div>
+
+  <!-- PROGRESS -->
+  <div class="progress-section" id="progressSection">
+    <div class="progress-header">
+      <span class="progress-title">Downloading</span>
+      <span class="progress-pct" id="progressPct">0%</span>
+    </div>
+    <div class="progress-bar-wrap"><div class="progress-bar" id="progressBar"></div></div>
+    <div class="progress-log" id="progressLog"></div>
+  </div>
+
+  <!-- DOWNLOAD SUMMARY -->
+  <div class="dl-summary" id="dlSummary"></div>
+
+  <!-- TABLE -->
+  <div class="table-section" id="tableSection">
+    <div class="table-section-header">
+      <span class="table-label">SKU Reference</span>
+      <span class="table-count" id="tableCount"></span>
+    </div>
+    <div class="table-wrap">
+      <table id="skuTable">
+        <thead>
+          <tr>
+            <th style="width:52px">IMG</th>
+            <th class="sorted" data-col="sku">Vendor / BC SKU ↑</th>
+            <th data-col="style">Style</th>
+            <th data-col="color">Color</th>
+            <th data-col="status">Status</th>
+            <th style="width:100px">Action</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────
+let allRows     = [];
+let filtered    = [];
+let sortCol     = 'sku';
+let sortAsc     = true;
+let downloaded  = {};   // sku -> 'done' | 'error'
+let downloading = false;
+
+// ── DOM refs ──────────────────────────────────────────────────────────────
+const dropZone       = document.getElementById('dropZone');
+const fileInput      = document.getElementById('fileInput');
+const statsBar       = document.getElementById('statsBar');
+const controls       = document.getElementById('controls');
+const progressSection= document.getElementById('progressSection');
+const progressBar    = document.getElementById('progressBar');
+const progressPct    = document.getElementById('progressPct');
+const progressLog    = document.getElementById('progressLog');
+const tableSection   = document.getElementById('tableSection');
+const tableBody      = document.getElementById('tableBody');
+const tableCount     = document.getElementById('tableCount');
+const filterInput    = document.getElementById('filterInput');
+const dlSummary      = document.getElementById('dlSummary');
+
+// ── File upload ───────────────────────────────────────────────────────────
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag');
+  const f = e.dataTransfer.files[0];
+  if (f) processFile(f);
+});
+fileInput.addEventListener('change', e => { if (e.target.files[0]) processFile(e.target.files[0]); });
+
+function processFile(file) {
+  if (!file.name.match(/\.xlsx?$/i)) { toast('Please upload an .xlsx or .xls file', 'err'); return; }
+  const reader = new FileReader();
+  reader.onload = e => parseExcel(e.target.result);
+  reader.readAsArrayBuffer(file);
+}
+
+// ── Excel parsing ─────────────────────────────────────────────────────────
+function parseExcel(buffer) {
+  const wb  = XLSX.read(buffer, { type: 'array' });
+
+  // Try to find the right sheet
+  const sheetName = wb.SheetNames.find(n => n.toLowerCase().includes('richer') || n.toLowerCase().includes('image'))
+                  || wb.SheetNames[0];
+  const ws  = wb.Sheets[sheetName];
+  const raw = XLSX.utils.sheet_to_json(ws, { defval: '' });
+
+  if (!raw.length) { toast('No data found in Excel', 'err'); return; }
+
+  // Flexible column detection
+  const sample = Object.keys(raw[0]);
+  const find = (...kws) => sample.find(k => kws.some(kw => k.toLowerCase().includes(kw))) || '';
+
+  const colSku    = find('bc sku', 'vendor sku', 'sku');
+  const colStyle  = find('style desc', 'description', 'style');
+  const colColor  = find('color', 'colour', 'axis');
+  const colUrl    = find('image url', 'url', 'hyperlink', 'image');
+
+  allRows = raw.map((r, i) => {
+    const sku   = String(r[colSku]  || '').trim();
+    const style = String(r[colStyle]|| '').trim();
+    const color = String(r[colColor]|| '').trim();
+    let   url   = String(r[colUrl]  || '').trim();
+
+    // Extract URL from HYPERLINK formula if present
+    const hm = url.match(/HYPERLINK\("([^"]+)"/i);
+    if (hm) url = hm[1];
+    if (!url.startsWith('http')) url = '';
+
+    return { id: i, sku, style, color, url, hasUrl: !!url };
+  }).filter(r => r.sku && r.sku !== 'BC SKU' && r.sku !== 'nan');
+
+  if (!allRows.length) { toast('Could not read SKU data — check column headers', 'warn'); return; }
+
+  downloaded = {};
+  filtered   = [...allRows];
+  updateStats();
+  renderTable();
+  showUI();
+  toast(`Loaded ${allRows.length} SKUs from "${sheetName}"`, 'ok');
+}
+
+// ── UI helpers ────────────────────────────────────────────────────────────
+function showUI() {
+  statsBar.style.display   = 'flex';
+  controls.style.display   = 'flex';
+  tableSection.style.display = 'block';
+}
+
+function updateStats() {
+  const ready   = allRows.filter(r => r.hasUrl).length;
+  const missing = allRows.filter(r => !r.hasUrl).length;
+  const done    = Object.values(downloaded).filter(v => v === 'done').length;
+  document.getElementById('statTotal').textContent   = allRows.length;
+  document.getElementById('statReady').textContent   = ready;
+  document.getElementById('statMissing').textContent = missing;
+  document.getElementById('statDone').textContent    = done;
+}
+
+// ── Filter + Sort ──────────────────────────────────────────────────────────
+filterInput.addEventListener('input', () => {
+  const q = filterInput.value.toLowerCase().trim();
+  filtered = q
+    ? allRows.filter(r => r.sku.toLowerCase().includes(q) || r.style.toLowerCase().includes(q) || r.color.toLowerCase().includes(q))
+    : [...allRows];
+  renderTable();
+});
+
+document.querySelectorAll('th[data-col]').forEach(th => {
+  th.addEventListener('click', () => {
+    const col = th.dataset.col;
+    if (sortCol === col) sortAsc = !sortAsc; else { sortCol = col; sortAsc = true; }
+    document.querySelectorAll('th[data-col]').forEach(t => t.classList.remove('sorted'));
+    th.classList.add('sorted');
+    th.textContent = { sku: 'Vendor / BC SKU', style: 'Style', color: 'Color', status: 'Status' }[col]
+                   + (sortAsc ? ' ↑' : ' ↓');
+    renderTable();
+  });
+});
+
+function sortedFiltered() {
+  return [...filtered].sort((a, b) => {
+    let va, vb;
+    if (sortCol === 'status') {
+      va = downloaded[a.sku] || (a.hasUrl ? 'ready' : 'missing');
+      vb = downloaded[b.sku] || (b.hasUrl ? 'ready' : 'missing');
+    } else {
+      va = a[sortCol] || '';
+      vb = b[sortCol] || '';
+    }
+    return sortAsc ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
+  });
+}
+
+// ── Table render ──────────────────────────────────────────────────────────
+function renderTable() {
+  const rows = sortedFiltered();
+  tableCount.textContent = `${rows.length} of ${allRows.length} SKUs`;
+  tableBody.innerHTML = '';
+
+  if (!rows.length) {
+    tableBody.innerHTML = '<tr><td colspan="6"><div class="empty-state">No matching SKUs</div></td></tr>';
+    return;
+  }
+
+  rows.forEach(row => {
+    const st  = downloaded[row.sku];
+    const tr  = document.createElement('tr');
+    tr.id     = `row-${row.id}`;
+
+    // Status pill
+    let pillHtml;
+    if (st === 'done')  pillHtml = `<span class="status-pill pill-done">✓ downloaded</span>`;
+    else if (st === 'error') pillHtml = `<span class="status-pill pill-err">✗ error</span>`;
+    else if (row.hasUrl) pillHtml = `<span class="status-pill pill-ok">● ready</span>`;
+    else                 pillHtml = `<span class="status-pill pill-miss">○ no url</span>`;
+
+    // Thumb or placeholder
+    const thumbHtml = row.hasUrl
+      ? `<img class="img-thumb" src="${row.url}" alt="${row.sku}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+        + `<div class="img-placeholder" style="display:none">?</div>`
+      : `<div class="img-placeholder">—</div>`;
+
+    // DL button
+    const btnDisabled = !row.hasUrl ? 'disabled' : '';
+    const btnText     = st === 'done' ? '✓ saved' : '↓ save';
+
+    tr.innerHTML = `
+      <td>${thumbHtml}</td>
+      <td class="sku-cell">${row.sku}</td>
+      <td class="style-cell" title="${row.style}">${row.style || '—'}</td>
+      <td class="color-cell">${row.color || '—'}</td>
+      <td>${pillHtml}</td>
+      <td>
+        <button class="dl-btn" data-id="${row.id}" ${btnDisabled}>${btnText}</button>
+      </td>`;
+    tableBody.appendChild(tr);
+  });
+
+  // Bind single-download buttons
+  tableBody.querySelectorAll('.dl-btn:not([disabled])').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const row = allRows.find(r => r.id === +btn.dataset.id);
+      if (row) downloadOne(row);
+    });
+  });
+}
+
+// ── Download one ──────────────────────────────────────────────────────────
+function downloadOne(row) {
+  const ext  = row.url.split('?')[0].split('.').pop() || 'jpg';
+  const name = `${sanitize(row.style || row.sku)}.${ext}`;
+  const a    = document.createElement('a');
+  a.href     = row.url;
+  a.download = name;
+  a.target   = '_blank';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+
+  downloaded[row.sku] = 'done';
+  updateStats();
+  renderTable();
+  toast(`Saved: ${name}`, 'ok');
+}
+
+function sanitize(str) {
+  return str.replace(/[\\/*?:"<>|]/g, '_').trim();
+}
+
+// ── Download all (sequential with progress) ───────────────────────────────
+document.getElementById('btnDownloadAll').addEventListener('click',   () => startBulk(false));
+document.getElementById('btnDownloadReady').addEventListener('click', () => startBulk(true));
+
+async function startBulk(readyOnly) {
+  if (downloading) return;
+  const queue = allRows.filter(r => r.hasUrl && (!readyOnly || r.hasUrl));
+  if (!queue.length) { toast('No images available to download', 'warn'); return; }
+
+  downloading = true;
+  progressSection.style.display = 'block';
+  dlSummary.style.display = 'none';
+  progressLog.innerHTML = '';
+  progressBar.style.width = '0%';
+  progressPct.textContent = '0%';
+
+  document.getElementById('btnDownloadAll').disabled   = true;
+  document.getElementById('btnDownloadReady').disabled = true;
+
+  let ok = 0, errs = 0;
+
+  for (let i = 0; i < queue.length; i++) {
+    const row  = queue[i];
+    const pct  = Math.round(((i + 1) / queue.length) * 100);
+    progressBar.style.width = pct + '%';
+    progressPct.textContent = pct + '%';
+
+    try {
+      const ext  = row.url.split('?')[0].split('.').pop() || 'jpg';
+      const name = `${sanitize(row.style || row.sku)}.${ext}`;
+      const a    = document.createElement('a');
+      a.href     = row.url;
+      a.download = name;
+      a.target   = '_blank';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      downloaded[row.sku] = 'done';
+      ok++;
+      logLine(`✓  ${name}`, 'ok');
+    } catch (e) {
+      downloaded[row.sku] = 'error';
+      errs++;
+      logLine(`✗  ${row.sku}  — ${e.message}`, 'err');
+    }
+
+    updateStats();
+
+    // Small delay to avoid browser blocking rapid downloads
+    await sleep(400);
+  }
+
+  downloading = false;
+  document.getElementById('btnDownloadAll').disabled   = false;
+  document.getElementById('btnDownloadReady').disabled = false;
+
+  renderTable();
+
+  dlSummary.style.display = 'block';
+  dlSummary.innerHTML = `
+    <strong style="color:var(--text)">Download complete</strong><br>
+    ✓ ${ok} files saved &nbsp;·&nbsp; ✗ ${errs} errors &nbsp;·&nbsp;
+    ⚠ ${allRows.filter(r=>!r.hasUrl).length} SKUs still missing image URLs<br>
+    <span style="color:var(--muted);font-size:10px">Files saved to your browser's default Downloads folder, named by Style (e.g. RCP1WVA-BLA.jpg)</span>
+  `;
+  toast(`Done — ${ok} images downloaded`, 'ok');
+}
+
+function logLine(msg, type) {
+  const div = document.createElement('div');
+  div.className = `log-${type}`;
+  div.textContent = msg;
+  progressLog.appendChild(div);
+  progressLog.scrollTop = progressLog.scrollHeight;
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ── Reset ─────────────────────────────────────────────────────────────────
+document.getElementById('btnReset').addEventListener('click', () => {
+  allRows = []; filtered = []; downloaded = {};
+  statsBar.style.display    = 'none';
+  controls.style.display    = 'none';
+  tableSection.style.display= 'none';
+  progressSection.style.display = 'none';
+  dlSummary.style.display   = 'none';
+  fileInput.value = '';
+  filterInput.value = '';
+  toast('Reset — upload a new file', 'ok');
+});
+
+// ── Generate blank template ───────────────────────────────────────────────
+document.getElementById('btnGetTemplate').addEventListener('click', generateTemplate);
+
+function generateTemplate() {
+  // Build workbook manually as a CSV-style base64 xlsx
+  // Using SheetJS to create a proper xlsx with instructions
+  const wb = XLSX.utils.book_new();
+
+  // ── Main data sheet ──
+  const dataRows = [
+    // Header row
+    ['STYLE', 'STYLE DESCRIPTION', 'COLOR', 'VENDOR SKU', 'BC SKU', 'IMAGE URL (click to open)', 'IMAGE FILENAME'],
+    // Example rows
+    ['RCP1WUY-COCMIL',    'Recycled Crew Sweatshirt - Women\'s', 'Coconut Milk',    '04WTF-RCCR-COMI-L', '04WTF-RCCR-COMI-L', 'https://andieswim.com/cdn/shop/files/04WTF-RCCR-COMI_01.jpg',  '04WTF-RCCR-COMI_01.jpg'],
+    ['RCP1WVA-BLA',       'Rec Fleece Classic Sweat Pant',       'Black',           '04WBF-RCPT-BLCK-L', '04WBF-RCPT-BLCK-L', 'https://andieswim.com/cdn/shop/files/04WBF-RCPT-BLCK-01_d427a5a2.jpg', '04WBF-RCPT-BLCK-01.jpg'],
+    ['YOUR-STYLE-003',    'Your Style Description Here',         'Your Color',      'VENDOR-SKU-003',    'BC-SKU-003',        'https://example.com/your-image-url.jpg',                         'your-image-url.jpg'],
+    ['YOUR-STYLE-004',    'Another Style Description',           'Another Color',   'VENDOR-SKU-004',    'BC-SKU-004',        '',                                                               ''],
+  ];
+
+  const ws = XLSX.utils.aoa_to_sheet(dataRows);
+
+  // Column widths
+  ws['!cols'] = [
+    { wch: 22 }, { wch: 40 }, { wch: 20 },
+    { wch: 22 }, { wch: 22 }, { wch: 65 }, { wch: 45 }
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Image Data');
+
+  // ── Instructions sheet ──
+  const instructions = [
+    ['XLS_URL_EXTRACTOR — Template Instructions', '', ''],
+    ['', '', ''],
+    ['HOW TO USE THIS TEMPLATE', '', ''],
+    ['', '', ''],
+    ['STEP 1', 'Fill in your data', 'Replace the example rows with your actual SKUs and image URLs.'],
+    ['STEP 2', 'Required columns', 'STYLE — used as the downloaded image filename (e.g. RCP1WUY-COCMIL.jpg)'],
+    ['',       '',                 'IMAGE URL — the direct link to the image file (must start with https://)'],
+    ['STEP 3', 'Optional columns', 'STYLE DESCRIPTION, COLOR, VENDOR SKU, BC SKU — shown in the tool for reference'],
+    ['STEP 4', 'Save as .xlsx',    'Keep the file in Excel format (.xlsx or .xls)'],
+    ['STEP 5', 'Upload',           'Open the XLS_URL_EXTRACTOR tool in your browser and drag this file in'],
+    ['', '', ''],
+    ['TIPS', '', ''],
+    ['', 'Image URL must be a direct link to a .jpg / .png / .webp file', ''],
+    ['', 'Leave IMAGE URL blank for SKUs where the image is not yet available', ''],
+    ['', 'The STYLE column becomes the filename — keep it clean (no special characters)', ''],
+    ['', 'You can add as many rows as needed — there is no limit', ''],
+    ['', '', ''],
+    ['COLUMN REFERENCE', '', ''],
+    ['Column',           'Required?', 'Description'],
+    ['STYLE',            'YES',       'Used as the saved image filename'],
+    ['STYLE DESCRIPTION','no',        'Human-readable product name'],
+    ['COLOR',            'no',        'Color name'],
+    ['VENDOR SKU',       'no',        'Vendor style code'],
+    ['BC SKU',           'no',        'Backcountry / buyer SKU'],
+    ['IMAGE URL',        'YES',       'Direct URL to the product image'],
+    ['IMAGE FILENAME',   'no',        'Auto-filled — just the filename portion of the URL'],
+  ];
+
+  const ws2 = XLSX.utils.aoa_to_sheet(instructions);
+  ws2['!cols'] = [{ wch: 20 }, { wch: 22 }, { wch: 70 }];
+  XLSX.utils.book_append_sheet(wb, ws2, 'Instructions');
+
+  // Download
+  XLSX.writeFile(wb, 'xls_url_extractor_template.xlsx');
+  toast('Template downloaded — fill in your SKUs & URLs, then upload here', 'ok');
+}
+
+
+let toastTimer;
+function toast(msg, type = 'ok') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.borderLeftColor = type === 'ok' ? 'var(--ok)' : type === 'warn' ? 'var(--warn)' : 'var(--err)';
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
+}
+</script>
+</body>
+</html>
